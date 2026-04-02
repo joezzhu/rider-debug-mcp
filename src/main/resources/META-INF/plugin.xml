@@ -1,0 +1,21 @@
+<idea-plugin>
+    <id>com.github.joezzhu.debugmcp</id>
+    <name>Debugger MCP Server</name>
+    <vendor email="joezzhu@example.com" url="https://github.com/joezzhu">joezzhu</vendor>
+
+    <description><![CDATA[
+    A Model Context Protocol (MCP) server for JetBrains Rider Debugger.<br>
+    Provides read-only access to debugger state (variables, stack traces, threads) for AI assistants.
+    ]]></description>
+
+    <!-- Product and plugin compatibility requirements.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <!-- Extension points defined by the plugin.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- 注册 ProjectActivity，在项目打开时启动 MCP Server -->
+        <postStartupActivity implementation="com.github.joezzhu.debugmcp.McpServerStartupActivity"/>
+    </extensions>
+</idea-plugin>
