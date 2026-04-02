@@ -8,7 +8,9 @@ out/
 
 # IntelliJ / Rider
 .idea/
+.intellijPlatform/
 *.iml
+
 
 # OS
 .DS_Store
