@@ -15,7 +15,6 @@ import io.modelcontextprotocol.kotlin.sdk.server.mcpStreamableHttp
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.McpJson
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
-import kotlinx.coroutines.*
 
 @Service(Service.Level.PROJECT)
 class McpServerService(private val project: Project) : Disposable {
@@ -25,57 +24,73 @@ class McpServerService(private val project: Project) : Disposable {
         private const val DEFAULT_PORT = 29190
     }
 
-    private var engine: ApplicationEngine? = null
-    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var engine: EmbeddedServer<*, *>? = null
 
-    val mcpServer = Server(
-        serverInfo = Implementation(
-            name = "Rider-Debugger-MCP",
-            version = "1.0.0"
-        ),
-        options = ServerOptions(
-            capabilities = ServerCapabilities(
-                tools = ServerCapabilities.Tools(listChanged = true)
+    val mcpServer: Server by lazy {
+        Server(
+            serverInfo = Implementation(
+                name = "Rider-Debugger-MCP",
+                version = "0.3.0"
+            ),
+            options = ServerOptions(
+                capabilities = ServerCapabilities(
+                    tools = ServerCapabilities.Tools(listChanged = true)
+                )
             )
         )
-    )
+    }
 
     fun start() {
         if (engine != null) {
-            LOG.warn("MCP Server is already running")
+            LOG.warn("[DebugMCP] MCP Server is already running, skipping start")
             return
         }
 
-        LOG.info("Starting Debugger MCP Server on port $DEFAULT_PORT")
+        try {
+            LOG.info("[DebugMCP] Registering MCP Tools...")
+            com.github.joezzhu.debugmcp.api.McpToolRegistrar(project, mcpServer).registerTools()
+            LOG.info("[DebugMCP] MCP Tools registered")
+        } catch (e: Throwable) {
+            LOG.error("[DebugMCP] Failed to register MCP Tools", e)
+            return
+        }
 
-        // 注册 MCP Tools
-        com.github.joezzhu.debugmcp.api.McpToolRegistrar(project, mcpServer).registerTools()
-
-        coroutineScope.launch {
+        LOG.info("[DebugMCP] Starting Ktor server on 127.0.0.1:$DEFAULT_PORT ...")
+        Thread {
             try {
-                engine = embeddedServer(CIO, port = DEFAULT_PORT, host = "127.0.0.1") {
+                val srv = embeddedServer(CIO, port = DEFAULT_PORT, host = "127.0.0.1") {
                     install(ContentNegotiation) {
                         json(McpJson)
                     }
                     mcpStreamableHttp {
                         mcpServer
                     }
-                }.start(wait = false)
-                LOG.info("MCP Server started successfully on port $DEFAULT_PORT")
-            } catch (e: Exception) {
-                LOG.error("Failed to start MCP Server", e)
+                }
+                srv.start(wait = false)
+                engine = srv
+                LOG.info("[DebugMCP] MCP Server started successfully on port $DEFAULT_PORT")
+            } catch (e: Throwable) {
+                LOG.error("[DebugMCP] Failed to start Ktor server", e)
             }
-        }
+        }.apply {
+            name = "DebugMCP-Server-Starter"
+            isDaemon = true
+            uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { t, ex ->
+                LOG.error("[DebugMCP] Uncaught exception in thread ${t.name}", ex)
+            }
+        }.start()
     }
 
     fun stop() {
-        LOG.info("Stopping Debugger MCP Server")
-        coroutineScope.cancel()
-        engine?.stop(1000, 2000)
-        engine = null
+        try {
+            engine?.stop(1000, 2000)
+            engine = null
+            LOG.info("[DebugMCP] MCP Server stopped")
+        } catch (e: Throwable) {
+            LOG.error("[DebugMCP] Error stopping MCP Server", e)
+        }
     }
 
-    // Called when the service is disposed (e.g., project closed)
     override fun dispose() {
         stop()
     }
