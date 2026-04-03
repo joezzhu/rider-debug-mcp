@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.github.joezzhu"
-version = "0.3.0"
+version = "0.3.1"
 
 intellijPlatform {
     buildSearchableOptions = false
