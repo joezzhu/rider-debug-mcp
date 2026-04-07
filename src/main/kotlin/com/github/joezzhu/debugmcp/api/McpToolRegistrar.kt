@@ -102,11 +102,23 @@ class McpToolRegistrar(private val project: Project, private val server: Server)
 
             try {
                 val frames = apiWrapper.getStackTrace(sessionName, threadName)
-                val resultText = frames
+                val frameLines = frames
                     .mapIndexed { index, frame -> apiWrapper.formatStackFrame(frame, index) }
                     .joinToString("\n")
-                CallToolResult(content = listOf(TextContent(resultText.ifEmpty { "No stack frames found." })))
-
+                // Append diagnostic info for debugging frame-list completeness
+                val threads = apiWrapper.listThreads(sessionName)
+                val thread = threads.find { it.displayName == threadName }
+                val diag = buildString {
+                    append("\n--- diag ---")
+                    append("\ntotalFrames: ${frames.size}")
+                    if (thread != null) {
+                        append("\nstackClass: ${thread.javaClass.name}")
+                        append("\ntopFrame: ${thread.topFrame?.sourcePosition?.let { "${it.file.name}:${it.line + 1}" } ?: "null"}")
+                    }
+                }
+                CallToolResult(content = listOf(TextContent(
+                    if (frameLines.isEmpty()) "No stack frames found.$diag" else "$frameLines$diag"
+                )))
             } catch (e: Exception) {
                 CallToolResult(content = listOf(TextContent("Error retrieving stack trace: ${e.message}")), isError = true)
             }
@@ -132,7 +144,7 @@ class McpToolRegistrar(private val project: Project, private val server: Server)
 
             try {
                 val variables = apiWrapper.getVariables(sessionName, threadName, frameIndex)
-                val resultText = variables.joinToString("\n\n") { it.toDisplayString() }
+                val resultText = variables.joinToString("\n") { it.toDisplayString() }
                 CallToolResult(content = listOf(TextContent(resultText.ifEmpty { "No variables found." })))
             } catch (e: Exception) {
                 CallToolResult(content = listOf(TextContent("Error retrieving variables: ${e.message}")), isError = true)
